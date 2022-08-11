@@ -1,89 +1,90 @@
 #include "main.h"
-#include <stdio.h>
+
+void cleanup(va_list args, buffer_t *output);
+int run_printf(const char *format, va_list args, buffer_t *output);
+int _printf(const char *format, ...);
 
 /**
- *print_helper - prints input as printf would do
- * @format: a character string containing directives
- * @ptbl: table of functions
- * @args: list of arguments
- * Return: The number of characters printed
+ * cleanup - Peforms cleanup operations for _printf.
+ * @args: A va_list of arguments provided to _printf.
+ * @output: A buffer_t struct.
  */
-
-int print_helper(const char *format, print_table ptbl[], va_list args)
+void cleanup(va_list args, buffer_t *output)
 {
-	int i = 0, j, count = 0, done = 0, ret;
-
-	if (!format || (format[0] == '%' && format[1] == '\0'))
-		return (-1);
-	while (format[i])
-	{
-		for (; format[i] != '%'; i++, count++)
-		{
-			if (!format[i])
-			{
-				done = 1;
-				break;
-			}
-			_putchar(format[i]);
-		}
-		if (done)
-			break;
-		i++;
-		for (j = 0; ptbl[j].type; j++)
-			if (format[i] == ptbl[j].type)
-			{
-				ret = ptbl[j].func(args);
-				if (ret == -1)
-				{
-					return (-1);
-				}
-				count += ret;
-				break;
-			}
-		if (ptbl[j].type == 0)
-		{
-			if (!format[i])
-				break;
-			_putchar('%');
-			_putchar(format[i]);
-			count += 2;
-		}
-		i++;
-	}
-	return (count);
+	va_end(args);
+	write(1, output->start, output->len);
+	free_buffer(output);
 }
 
 /**
- *_printf - prints input as printf would do
- * @format: a character string containing directives
- * Return: The number of characters printed
+ * run_printf - Reads through the format string for _printf.
+ * @format: Character string to print - may contain directives.
+ * @output: A buffer_t struct containing a buffer.
+ * @args: A va_list of arguments.
+ *
+ * Return: The number of characters stored to output.
  */
+int run_printf(const char *format, va_list args, buffer_t *output)
+{
+	int i, wid, prec, ret = 0;
+	char tmp;
+	unsigned char flags, len;
+	unsigned int (*f)(va_list, buffer_t *,
+			unsigned char, int, int, unsigned char);
 
+	for (i = 0; *(format + i); i++)
+	{
+		len = 0;
+		if (*(format + i) == '%')
+		{
+			tmp = 0;
+			flags = handle_flags(format + i + 1, &tmp);
+			wid = handle_width(args, format + i + tmp + 1, &tmp);
+			prec = handle_precision(args, format + i + tmp + 1,
+					&tmp);
+			len = handle_length(format + i + tmp + 1, &tmp);
+
+			f = handle_specifiers(format + i + tmp + 1);
+			if (f != NULL)
+			{
+				i += tmp + 1;
+				ret += f(args, output, flags, wid, prec, len);
+				continue;
+			}
+			else if (*(format + i + tmp + 1) == '\0')
+			{
+				ret = -1;
+				break;
+			}
+		}
+		ret += _memcpy(output, (format + i), 1);
+		i += (len != 0) ? 1 : 0;
+	}
+	cleanup(args, output);
+	return (ret);
+}
+
+/**
+ * _printf - Outputs a formatted string.
+ * @format: Character string to print - may contain directives.
+ *
+ * Return: The number of characters printed.
+ */
 int _printf(const char *format, ...)
 {
-	int count = 0;
+	buffer_t *output;
 	va_list args;
-	print_table ptbl[] = {
-		{'c', print_c},
-		{'s', print_s},
-		{'%', print_perc},
-		{'d', print_d},
-		{'i', print_i},
-		{'b', print_b},
-		{'u', print_u},
-		{'o', print_o},
-		{'x', print_x},
-		{'X', print_X},
-		{'S', print_S},
-		{'r', print_r},
-		{'p', print_p},
-		{'R', print_R},
-		{0, NULL}
-	};
+	int ret;
+
+	if (format == NULL)
+		return (-1);
+	output = init_buffer();
+	if (output == NULL)
+		return (-1);
+
 	va_start(args, format);
 
-	count = print_helper(format, ptbl, args);
-	_putchar(-1);
-	va_end(args);
-	return (count);
+	ret = run_printf(format, args, output);
+
+	return (ret);
 }
